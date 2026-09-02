@@ -30,12 +30,12 @@ struct Token {
         : type(type), lexeme(std::move(lexeme)), line(line) {}
 };
 
-// Line based lexer for the PlantUML class diagram subset.
+// Whitespace separated lexer for the PlantUML class diagram subset.
 //
-// At this stage it only recognises the diagram delimiters: a line starting with
-// @startuml becomes START_UML, a line starting with @enduml becomes END_UML and
-// every other non-empty line becomes a single IDENTIFIER token holding the
-// trimmed line. Blank lines carry no content and are skipped.
+// At this stage it only recognises the diagram delimiters: the word @startuml
+// becomes START_UML, the word @enduml becomes END_UML and every other word
+// becomes an IDENTIFIER token. Words are separated by any whitespace, so
+// blank lines produce no tokens.
 class Lexer {
 public:
     explicit Lexer(std::string source);
