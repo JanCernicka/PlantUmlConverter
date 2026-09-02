@@ -35,6 +35,7 @@ std::vector<Token> Lexer::tokenize() const {
 
     int line_number = 1;
     std::size_t position = 0;
+    bool inside_diagram = false;
 
     while (position < source_.size()) {
         // Skip whitespace, counting newlines so tokens know their line.
@@ -57,14 +58,15 @@ std::vector<Token> Lexer::tokenize() const {
         const std::string directive = to_lower(word);
         if (directive == "@startuml") {
             tokens.emplace_back(TokenType::START_UML, word, line_number);
+            inside_diagram = true;
         } else if (directive == "@enduml") {
             tokens.emplace_back(TokenType::END_UML, word, line_number);
-        } else {
+            inside_diagram = false;
+        } else if (inside_diagram) {
             tokens.emplace_back(TokenType::IDENTIFIER, word, line_number);
         }
     }
 
-    tokens.emplace_back(TokenType::END_OF_FILE, "", line_number);
     return tokens;
 }
 

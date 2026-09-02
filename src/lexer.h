@@ -9,8 +9,7 @@ namespace plantuml {
 #define TOKEN_TYPES \
     X(START_UML)    \
     X(END_UML)      \
-    X(IDENTIFIER)   \
-    X(END_OF_FILE)
+    X(IDENTIFIER)
 
 enum class TokenType {
 #define X(name) name,
@@ -34,13 +33,14 @@ struct Token {
 //
 // At this stage it only recognises the diagram delimiters: the word @startuml
 // becomes START_UML, the word @enduml becomes END_UML and every other word
-// becomes an IDENTIFIER token. Words are separated by any whitespace, so
-// blank lines produce no tokens.
+// between the two delimiters becomes an IDENTIFIER token. Words outside a
+// @startuml ... @enduml block are discarded. Words are separated by any
+// whitespace, so blank lines produce no tokens.
 class Lexer {
 public:
     explicit Lexer(std::string source);
 
-    // Scans the whole source. The returned vector always ends with END_OF_FILE.
+    // Scans the whole source.
     std::vector<Token> tokenize() const;
 
 private:
