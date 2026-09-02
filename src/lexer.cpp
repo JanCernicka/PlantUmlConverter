@@ -40,6 +40,28 @@ TokenType Lexer::classify(std::string_view word) {
     return keyword == keywords_.end() ? TokenType::IDENTIFIER : keyword->second;
 }
 
+std::string Lexer::scan_word(std::size_t& position) const {
+    const std::size_t begin = position;
+    while (position < source_.size() && !is_space(source_[position])) {
+        ++position;
+    }
+    return source_.substr(begin, position - begin);
+}
+
+std::string Lexer::scan_quoted(std::size_t& position) const {
+    const std::size_t begin = ++position;  // skip the opening quote
+    while (position < source_.size() && source_[position] != '"' &&
+           source_[position] != '\n') {
+        ++position;
+    }
+
+    std::string text = source_.substr(begin, position - begin);
+    if (position < source_.size() && source_[position] == '"') {
+        ++position;  // skip the closing quote
+    }
+    return text;
+}
+
 std::vector<Token> Lexer::tokenize() const {
     std::vector<Token> tokens;
 
@@ -57,15 +79,15 @@ std::vector<Token> Lexer::tokenize() const {
             continue;
         }
 
-        std::size_t word_end = position;
-        while (word_end < source_.size() && !is_space(source_[word_end])) {
-            ++word_end;
+        std::string word;
+        TokenType type;
+        if (source_[position] == '"') {
+            word = scan_quoted(position);
+            type = TokenType::IDENTIFIER;  // quoted text is never a keyword
+        } else {
+            word = scan_word(position);
+            type = classify(to_lower(word));
         }
-
-        std::string word = source_.substr(position, word_end - position);
-        position = word_end;
-
-        const TokenType type = classify(to_lower(word));
 
         if (type == TokenType::START_UML) {
             inside_diagram = true;

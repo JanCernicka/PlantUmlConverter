@@ -37,7 +37,9 @@ struct Token {
 // becomes START_UML, the word @enduml becomes END_UML and every other word
 // between the two delimiters becomes an IDENTIFIER token. Words outside a
 // @startuml ... @enduml block are discarded. Words are separated by any
-// whitespace, so blank lines produce no tokens.
+// whitespace, so blank lines produce no tokens. A word starting with a double
+// quote extends to the closing quote and may contain whitespace; the quotes
+// themselves are not part of the lexeme.
 class Lexer {
 public:
     explicit Lexer(std::string source);
@@ -53,6 +55,16 @@ private:
     // Returns the keyword token type for a word, or IDENTIFIER if it is not a
     // keyword.
     static TokenType classify(std::string_view word);
+
+    // Reads a whitespace delimited word starting at position and advances
+    // position past it.
+    std::string scan_word(std::size_t& position) const;
+
+    // Reads a double quoted word starting at position (which must point at the
+    // opening quote) and advances position past the closing quote. Returns the
+    // text between the quotes. An unterminated quote ends at the end of the
+    // line.
+    std::string scan_quoted(std::size_t& position) const;
 
     std::string source_;
 };
