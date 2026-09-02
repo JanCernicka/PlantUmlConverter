@@ -63,8 +63,8 @@ private:
     // Reads a double quoted word starting at position (which must point at the
     // opening quote) and advances position past the closing quote. Returns the
     // text between the quotes. An unterminated quote ends at the end of the
-    // line.
-    std::string scan_quoted(std::size_t& position) const;
+    // line and is reported as an error.
+    std::string scan_quoted(std::size_t& position, int line) const;
 
     std::string source_;
 };

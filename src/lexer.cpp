@@ -2,6 +2,8 @@
 
 #include <cctype>
 
+#include <spdlog/spdlog.h>
+
 namespace plantuml {
 namespace {
 
@@ -48,7 +50,7 @@ std::string Lexer::scan_word(std::size_t& position) const {
     return source_.substr(begin, position - begin);
 }
 
-std::string Lexer::scan_quoted(std::size_t& position) const {
+std::string Lexer::scan_quoted(std::size_t& position, int line) const {
     const std::size_t begin = ++position;  // skip the opening quote
     while (position < source_.size() && source_[position] != '"' &&
            source_[position] != '\n') {
@@ -58,11 +60,15 @@ std::string Lexer::scan_quoted(std::size_t& position) const {
     std::string text = source_.substr(begin, position - begin);
     if (position < source_.size() && source_[position] == '"') {
         ++position;  // skip the closing quote
+    } else {
+        spdlog::error("line {}: unterminated quote, text \"{}\" runs to end of line",
+                      line, text);
     }
     return text;
 }
 
 std::vector<Token> Lexer::tokenize() const {
+    spdlog::info("lexer started on {} symbols", source_.size());
     std::vector<Token> tokens;
 
     int line_number = 1;
@@ -82,7 +88,7 @@ std::vector<Token> Lexer::tokenize() const {
         std::string word;
         TokenType type;
         if (source_[position] == '"') {
-            word = scan_quoted(position);
+            word = scan_quoted(position, line_number);
             type = TokenType::IDENTIFIER;  // quoted text is never a keyword
         } else {
             word = scan_word(position);
@@ -90,16 +96,32 @@ std::vector<Token> Lexer::tokenize() const {
         }
 
         if (type == TokenType::START_UML) {
+            if (inside_diagram) {
+                spdlog::warn("line {}: @startuml inside an open diagram",
+                             line_number);
+            }
             inside_diagram = true;
         } else if (type == TokenType::END_UML) {
+            if (!inside_diagram) {
+                spdlog::warn("line {}: @enduml without a matching @startuml",
+                             line_number);
+            }
             inside_diagram = false;
         } else if (!inside_diagram) {
-            continue;  // everything outside a diagram block is discarded
+            spdlog::debug("line {}: discarding \"{}\" outside diagram",
+                          line_number, word);
+            continue;
         }
 
+        spdlog::debug("line {}: {} \"{}\"", line_number, to_string(type), word);
         tokens.emplace_back(type, std::move(word), line_number);
     }
 
+    if (inside_diagram) {
+        spdlog::error("reached end of input without @enduml");
+    }
+
+    spdlog::info("lexer finished with {} tokens", tokens.size());
     return tokens;
 }
 

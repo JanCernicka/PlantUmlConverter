@@ -1,34 +1,39 @@
 #include <fstream>
-#include <iostream>
 #include <sstream>
 #include <string>
+
+#include <spdlog/spdlog.h>
 
 #include "lexer.h"
 
 int main(int argc, char** argv) {
+    spdlog::set_level(spdlog::level::debug);
+
     if (argc != 2) {
-        std::cerr << "usage: plantumlconverter <file.plantuml>\n";
+        spdlog::error("usage: plantumlconverter <file.plantuml>");
         return 1;
     }
 
     const std::string path = argv[1];
     std::ifstream input(path);
     if (!input) {
-        std::cerr << "error: cannot open '" << path << "'\n";
+        spdlog::error("cannot open '{}'", path);
         return 1;
     }
+    spdlog::info("opened '{}'", path);
 
     std::ostringstream buffer;
     buffer << input.rdbuf();
-
-    const plantuml::Lexer lexer(buffer.str());
-    for (const plantuml::Token& token : lexer.tokenize()) {
-        std::cout << token.line << ": " << plantuml::to_string(token.type);
-        if (!token.lexeme.empty()) {
-            std::cout << " \"" << token.lexeme << "\"";
-        }
-        std::cout << '\n';
+    if (input.bad()) {
+        spdlog::error("failed while reading '{}'", path);
+        return 1;
     }
+
+    const std::string source = buffer.str();
+    spdlog::info("read {} symbols from '{}'", source.size(), path);
+
+    const plantuml::Lexer lexer(source);
+    const std::vector<plantuml::Token> tokens = lexer.tokenize();
 
     return 0;
 }
