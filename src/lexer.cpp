@@ -28,7 +28,17 @@ const char* to_string(TokenType type) {
     return "UNKNOWN";
 }
 
+const std::unordered_map<std::string_view, TokenType> Lexer::keywords_ = {
+    {"@startuml", TokenType::START_UML},
+    {"@enduml",   TokenType::END_UML},
+};
+
 Lexer::Lexer(std::string source) : source_(std::move(source)) {}
+
+TokenType Lexer::classify(std::string_view word) {
+    const auto keyword = keywords_.find(word);
+    return keyword == keywords_.end() ? TokenType::IDENTIFIER : keyword->second;
+}
 
 std::vector<Token> Lexer::tokenize() const {
     std::vector<Token> tokens;
@@ -55,16 +65,17 @@ std::vector<Token> Lexer::tokenize() const {
         std::string word = source_.substr(position, word_end - position);
         position = word_end;
 
-        const std::string directive = to_lower(word);
-        if (directive == "@startuml") {
-            tokens.emplace_back(TokenType::START_UML, word, line_number);
+        const TokenType type = classify(to_lower(word));
+
+        if (type == TokenType::START_UML) {
             inside_diagram = true;
-        } else if (directive == "@enduml") {
-            tokens.emplace_back(TokenType::END_UML, word, line_number);
+        } else if (type == TokenType::END_UML) {
             inside_diagram = false;
-        } else if (inside_diagram) {
-            tokens.emplace_back(TokenType::IDENTIFIER, word, line_number);
+        } else if (!inside_diagram) {
+            continue;  // everything outside a diagram block is discarded
         }
+
+        tokens.emplace_back(type, std::move(word), line_number);
     }
 
     return tokens;

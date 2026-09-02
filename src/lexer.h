@@ -2,6 +2,8 @@
 #define PLANTUMLCONVERTER_LEXER_H
 
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace plantuml {
@@ -44,6 +46,14 @@ public:
     std::vector<Token> tokenize() const;
 
 private:
+    // Words that map directly onto a token type. Anything not listed here is
+    // an IDENTIFIER.
+    static const std::unordered_map<std::string_view, TokenType> keywords_;
+
+    // Returns the keyword token type for a word, or IDENTIFIER if it is not a
+    // keyword.
+    static TokenType classify(std::string_view word);
+
     std::string source_;
 };
 
