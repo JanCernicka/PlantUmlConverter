@@ -40,15 +40,11 @@ std::string first_word(const std::string& line) {
 
 const char* to_string(TokenType type) {
     switch (type) {
-        case TokenType::START_UML:
-            return "START_UML";
-        case TokenType::END_UML:
-            return "END_UML";
-        case TokenType::IDENTIFIER:
-            return "IDENTIFIER";
-        case TokenType::END_OF_FILE:
-            return "END_OF_FILE";
+#define X(name) case TokenType::name: return #name;
+        TOKEN_TYPES
+#undef X
     }
+
     return "UNKNOWN";
 }
 
@@ -57,7 +53,7 @@ Lexer::Lexer(std::string source) : source_(std::move(source)) {}
 std::vector<Token> Lexer::tokenize() const {
     std::vector<Token> tokens;
 
-    std::size_t line_number = 0;
+    int line_number = 0;
     std::size_t position = 0;
 
     while (position <= source_.size()) {

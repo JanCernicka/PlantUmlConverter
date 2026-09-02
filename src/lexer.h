@@ -6,11 +6,16 @@
 
 namespace plantuml {
 
+#define TOKEN_TYPES \
+    X(START_UML)    \
+    X(END_UML)      \
+    X(IDENTIFIER)   \
+    X(END_OF_FILE)
+
 enum class TokenType {
-    START_UML,
-    END_UML,
-    IDENTIFIER,
-    END_OF_FILE
+#define X(name) name,
+    TOKEN_TYPES
+#undef X
 };
 
 // Human readable name of a token type, used for diagnostics.
@@ -19,9 +24,9 @@ const char* to_string(TokenType type);
 struct Token {
     TokenType type;
     std::string lexeme;  // the source text the token was produced from
-    std::size_t line;    // 1-based line number in the source
+    int line;            // 1-based line number in the source
 
-    Token(TokenType type, std::string lexeme, std::size_t line)
+    Token(TokenType type, std::string lexeme, int line)
         : type(type), lexeme(std::move(lexeme)), line(line) {}
 };
 
