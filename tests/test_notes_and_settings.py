@@ -146,3 +146,22 @@ def test_unsupported_but_valid_commands_warn(compile_diagram):
 def test_entity_named_like_a_command_word(compile_diagram):
     d = compile_diagram("set --> hide\nscale --> show\nhide <|-- show")
     assert [(r.source.name, r.target.name) for r in d.relationships] == [("set", "hide"), ("scale", "show"), ("hide", "show")]
+
+
+def test_note_on_member(compile_diagram):
+    d = compile_diagram("class EventBus {\n+publish(e : Event)\n}\nnote right of EventBus::publish\nSynchronous.\nend note")
+    (note,) = d.notes
+    assert note.target is d.entities["EventBus"] and note.member == "publish" and not d.diagnostics
+    assert set(d.entities) == {"EventBus"}
+
+
+def test_note_on_unknown_member_warns_but_keeps_the_note(compile_diagram):
+    d = compile_diagram("class A\nnote left of A::nothing : x")
+    assert d.notes[0].member == "nothing" and [x.severity for x in d.diagnostics] == [Severity.WARNING]
+
+
+def test_together_lists_existing_entities_without_moving_them(compile_diagram):
+    d = compile_diagram("package p {\nclass A\nclass B\n}\ntogether {\nclass A\nclass C\n}")
+    group = next(g for g in d.packages.values() if g.kind.value == "together")
+    assert [e.name for e in group.iter_entities()] == ["A", "C"]
+    assert d.entities["A"].package is d.packages["p"]

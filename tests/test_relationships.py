@@ -187,3 +187,18 @@ def test_association_on_same_class_with_diamond(compile_diagram):
         ("diamond", "Station", "from 0..*"),
         ("diamond", "Station", "to 0..*"),
     ]
+
+
+def test_qualifiers(compile_diagram):
+    d = compile_diagram('Customer [addressId : UUID] --> Address : lookup\nA "1" [k] -- [j] "*" B')
+    first, second = d.relationships
+    assert (first.source_qualifier, first.target_qualifier, first.label) == ("addressId : UUID", None, "lookup")
+    assert (second.source_cardinality, second.source_qualifier, second.target_qualifier, second.target_cardinality) == ("1", "k", "j", "*")
+
+
+def test_direction_keyword_after_inline_style(compile_diagram):
+    d = compile_diagram("a -[hidden]right- b\na -[#red]down-> c\na -left[bold]-> d")
+    first, second, third = d.relationships
+    assert (first.hidden, first.direction) == (True, Direction.RIGHT)
+    assert (second.color, second.direction, second.target_head) == ("red", Direction.DOWN, ArrowHead.ARROW)
+    assert (third.bold, third.direction) == (True, Direction.LEFT)

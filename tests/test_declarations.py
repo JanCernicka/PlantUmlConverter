@@ -147,3 +147,18 @@ def test_member_added_to_unknown_entity_creates_it(compile_diagram):
     assert d.entities["Object"].implicit
     assert [m.name for m in d.entities["Object"].methods] == ["equals"]
     assert d.entities["ArrayList"].fields[0].type == "Object[]"
+
+
+@pytest.mark.parametrize(
+    "keyword, kind",
+    [
+        ("exception", ElementKind.EXCEPTION),
+        ("struct", ElementKind.STRUCT),
+        ("protocol", ElementKind.PROTOCOL),
+        ("metaclass", ElementKind.METACLASS),
+    ],
+)
+def test_newer_element_keywords(compile_diagram, keyword, kind):
+    d = compile_diagram(f"{keyword} A {{\n  x : int\n}}\nA --> {keyword}")
+    assert d.entities["A"].kind is kind and [m.name for m in d.entities["A"].members] == ["x"]
+    assert d.entities[keyword].implicit and not d.diagnostics

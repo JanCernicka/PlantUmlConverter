@@ -42,3 +42,13 @@ def test_damaged_input_never_crashes(seed):
             lines = [""]
     result = compile_text("\n".join(lines))
     result.all_diagnostics()
+
+
+def test_ecommerce_example_compiles_without_any_diagnostic():
+    example = Path(__file__).parent.parent / "examples" / "ecommerce_architecture.puml"
+    result = compile_file(example)
+    assert result.all_diagnostics() == []
+    diagram = result.diagram
+    assert len(diagram.entities) == 64
+    assert {e.name for e in diagram.entities.values() if e.implicit} == {"RuntimeException", "Refundable"}
+    assert [m.name for m in diagram.entities["Dimensions"].fields] == ["width", "height", "depth"]
