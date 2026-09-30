@@ -52,3 +52,27 @@ def test_ecommerce_example_compiles_without_any_diagnostic():
     assert len(diagram.entities) == 64
     assert {e.name for e in diagram.entities.values() if e.implicit} == {"RuntimeException", "Refundable"}
     assert [m.name for m in diagram.entities["Dimensions"].fields] == ["width", "height", "depth"]
+
+
+def test_design_patterns_example_compiles_without_any_diagnostic():
+    example = Path(__file__).parent.parent / "examples" / "design_patterns.puml"
+    result = compile_file(example)
+    assert result.all_diagnostics() == [] and not result.skipped
+    observer, strategy, composite, domain = result.diagrams
+    assert [d.name for d in result.diagrams] == ["Observer", "Strategy and Factory", "Composite and Decorator", "Domain model"]
+
+    subject = observer.entities["AbstractSubject"]
+    assert subject.generics == "T" and [e.name for e in subject.implements] == ["Subject"]
+    assert observer.notes[0].target is observer.entities["Thermostat"]
+
+    registry = strategy.entities["Registry"]
+    assert registry.spot.character == "S" and registry.stereotypes == ["Singleton"]
+    assert [m.name for m in registry.members if getattr(m, "is_static", False)] == ["instance", "getInstance"]
+    assert strategy.entities["CardPayment"].package is strategy.packages["com.acme.payment"]
+
+    group = next(p for p in composite.packages.values() if p.kind.value == "together")
+    assert [e.name for e in group.iter_entities()] == ["BoldDecorator", "ColorDecorator"]
+
+    assert domain.entities["library.model.Book"].namespace == "library.model"
+    assert domain.association_classes[0].entity.name == "Loan"
+    assert domain.notes[0].target.target.name == "Audited"  # the note sits on the last link

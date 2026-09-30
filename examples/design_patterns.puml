@@ -1,0 +1,194 @@
+' Classic design patterns as a class diagram, in several diagrams per file.
+' Regular, everyday PlantUML: no exotic features, just things people really write.
+
+@startuml Observer
+title Observer pattern
+skinparam classAttributeIconSize 0
+hide empty members
+
+interface Observer<T> {
+  + update(event : T) : void
+}
+
+interface Subject<T> {
+  + attach(o : Observer<T>) : void
+  + detach(o : Observer<T>) : void
+  # notifyAll(event : T) : void
+}
+
+abstract class AbstractSubject<T> implements Subject {
+  - observers : List<Observer<T>>
+  + attach(o : Observer<T>) : void
+  + detach(o : Observer<T>) : void
+  # notifyAll(event : T) : void
+  {abstract} + state() : T
+}
+
+class Thermostat extends AbstractSubject {
+  - temperature : double
+  + setTemperature(t : double) : void
+}
+
+class Display implements Observer
+class Logger implements Observer
+
+Thermostat "1" o-- "0..*" Display : notifies >
+Thermostat "1" o-- "0..*" Logger : notifies >
+
+note right of Thermostat
+  Calls <b>notifyAll</b> whenever
+  the temperature changes.
+end note
+@enduml
+
+@startuml Strategy and Factory
+left to right direction
+title Strategy and Factory\nwith a singleton registry
+
+package "com.acme.payment" {
+  interface PaymentStrategy {
+    + pay(amount : BigDecimal) : Receipt
+  }
+
+  class CardPayment {
+    - cardNumber : String
+    + pay(amount : BigDecimal) : Receipt
+  }
+
+  class PayPalPayment {
+    - account : String
+    + pay(amount : BigDecimal) : Receipt
+  }
+
+  class Receipt <<value>> {
+    + id : UUID
+    + amount : BigDecimal
+    + {static} EMPTY : Receipt
+  }
+
+  class PaymentFactory << (F,#FFD966) Factory >> {
+    + {static} create(kind : String) : PaymentStrategy
+  }
+
+  class Registry << (S,orchid) Singleton >> {
+    - {static} instance : Registry
+    - strategies : Map<String, PaymentStrategy>
+    - Registry()
+    + {static} getInstance() : Registry
+    + register(name : String, s : PaymentStrategy) : void
+  }
+}
+
+PaymentStrategy <|.. CardPayment
+PaymentStrategy <|.. PayPalPayment
+PaymentFactory ..> PaymentStrategy : creates
+PaymentFactory --> Registry : looks up in
+Registry "1" *-- "*" PaymentStrategy
+CardPayment ..> Receipt : <<returns>>
+PayPalPayment ..> Receipt : <<returns>>
+@enduml
+
+@startuml Composite and Decorator
+skinparam class {
+  BackgroundColor<<Composite>> LightYellow
+  BackgroundColor<<Decorator>> LightBlue
+  BorderColor #555555
+}
+
+abstract class Component {
+  {abstract} + operation() : String
+  + add(c : Component) : void
+  + remove(c : Component) : void
+}
+
+class Leaf {
+  + operation() : String
+}
+
+class Composite <<Composite>> {
+  - children : List<Component>
+  + operation() : String
+  + add(c : Component) : void
+}
+
+abstract class Decorator <<Decorator>> {
+  # wrapped : Component
+  + operation() : String
+}
+
+class BoldDecorator <<Decorator>>
+class ColorDecorator <<Decorator>> {
+  - color : String
+}
+
+Component <|-- Leaf
+Component <|-- Composite
+Component <|-- Decorator
+Decorator <|-- BoldDecorator
+Decorator <|-- ColorDecorator
+Composite "1" o-- "*" Component : children
+Decorator "1" *-- "1" Component : wraps
+
+together {
+  class BoldDecorator
+  class ColorDecorator
+}
+
+legend right
+  | Color | Role |
+  |<#LightYellow>| Composite |
+  |<#LightBlue>| Decorator |
+endlegend
+@enduml
+
+@startuml Domain model
+' relationships with everything people combine: enums, association class, packages, notes on links
+header Library system
+footer Page 1
+hide circle
+
+namespace library.model {
+  class Book {
+    - isbn : String
+    - title : String
+    - year : int
+    + available() : boolean
+  }
+
+  class Member {
+    - name : String
+    - email : String
+  }
+
+  class Loan {
+    - since : Date
+    - due : Date
+    + isOverdue() : boolean
+  }
+
+  enum Genre {
+    FICTION
+    SCIENCE
+    HISTORY
+    --
+    + label() : String
+  }
+
+  annotation Audited
+}
+
+library.model.Book "0..*" -- "0..*" library.model.Member : borrows >
+(library.model.Book, library.model.Member) .. library.model.Loan
+library.model.Book --> library.model.Genre : genre
+library.model.Member ..> library.model.Audited
+
+note on link #lightgreen
+  Every loan is recorded in
+  the audit log.
+end note
+
+class Librarian
+Librarian -right-> library.model.Member : manages
+Librarian -[hidden]down- library.model.Book
+Librarian "1" -- "*" library.model.Loan : approves
+@enduml
