@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Callable, List, NamedTuple, Optional, Union
+from typing import Callable, List, NamedTuple, Optional, Tuple, Union
 
 from .diagnostics import Reporter
 from .members import parse_member
@@ -25,6 +25,7 @@ from .model import (
     LayoutDirection,
     Legend,
     LineStyle,
+    Member,
     Note,
     NoteLink,
     NotePosition,
@@ -56,14 +57,18 @@ _KINDS = {
     "diamond": ElementKind.DIAMOND,
     "entity": ElementKind.ENTITY,
     "enum": ElementKind.ENUM,
+    "exception": ElementKind.EXCEPTION,
     "interface": ElementKind.INTERFACE,
+    "metaclass": ElementKind.METACLASS,
+    "protocol": ElementKind.PROTOCOL,
+    "struct": ElementKind.STRUCT,
     "()": ElementKind.CIRCLE,
     "<>": ElementKind.DIAMOND,
 }
 _RULE_KINDS = {k: v for k, v in _KINDS.items() if k not in ("()", "<>")}
 
 _DECL = re.compile(
-    r"^(?:(?P<kw>abstract\s+class|abstract|annotation|circle|class|diamond|entity|enum|interface)\s+"
+    r"^(?:(?P<kw>abstract\s+class|abstract|annotation|circle|class|diamond|entity|enum|exception|interface|metaclass|protocol|struct)\s+"
     r"|(?P<sym>\(\)|<>)\s*)(?P<rest>\S.*)$",
     _I,
 )
@@ -482,6 +487,10 @@ class ClassDiagramParser:
             )
         else:
             logger.debug("line %d: '%s' declared again, merging", line, qualified)
+        group = self._stack[-1]
+        if group.kind is PackageKind.TOGETHER and entity not in group.children:
+            # ``together`` only hints the layout: the entity stays in its package but is also listed here
+            group.children.append(entity)
 
         if decl.display:
             entity.display_name = decl.display
@@ -630,6 +639,8 @@ class ClassDiagramParser:
             label_arrow=syntax.label_arrow,
             source_cardinality=syntax.left_cardinality,
             target_cardinality=syntax.right_cardinality,
+            source_qualifier=syntax.left_qualifier,
+            target_qualifier=syntax.right_qualifier,
             line=line.number,
         )
         self.diagram.relationships.append(relationship)
@@ -720,7 +731,13 @@ class ClassDiagramParser:
 
         m = _NOTE_OF.match(text)
         if m:
-            target = self._resolve_endpoint(_ref_from_text(m.group("ref")), line.number)
+            ref = _ref_from_text(m.group("ref"))
+            entity, member = self._split_member_ref(ref, line.number)
+            if entity is not None:  # note right of Class::member
+                note = self._finish_note(m, line.number, entity)
+                note.member = member
+                return True
+            target = self._resolve_endpoint(ref, line.number)
             if isinstance(target, Note):
                 self._rep.error("a note cannot be attached to another note", line.number)
                 self._skip_note_text(m.group("text"), line.number)
@@ -749,6 +766,19 @@ class ClassDiagramParser:
             self._finish_note(m, line.number, self._last_entity)
             return True
         return False
+
+    def _split_member_ref(self, ref: Ref, line: int) -> Tuple[Optional[Entity], str]:
+        """``Class::member`` names a member of an existing class, unless ``::`` is the
+        namespace separator. Returns (class, member) or (None, "")."""
+        if ref.quoted or self._sep == "::" or "::" not in ref.text:
+            return None, ""
+        owner_text, _, member = ref.text.rpartition("::")
+        owner = self.diagram.entities.get(self._qualify(owner_text, False).qualified)
+        if owner is None or not member:
+            return None, ""
+        if not any(isinstance(m, Member) and m.name == member.rstrip("()") for m in owner.members):
+            self._rep.warning(f"'{owner.qualified_name}' has no member '{member}'", line)
+        return owner, member
 
     def _finish_note(self, m: "re.Match[str]", line: int, target: Union[Entity, Package, Relationship]) -> Note:
         body = m.group("text")

@@ -60,7 +60,8 @@ become qualified names. Colors are stored without the leading `#`.
 ## Supported syntax
 
 - **Elements** (3.1): `class`, `abstract`, `abstract class`, `annotation`, `circle`, `()`,
-  `diamond`, `<>`, `entity`, `enum`, `interface`; alias and label (`class "Long name" as a`,
+  `diamond`, `<>`, `entity`, `enum`, `interface`, plus `exception`, `struct`, `protocol`, `metaclass`
+  (newer PlantUML, not in the 1.2020.22 guide); alias and label (`class "Long name" as a`,
   `class a as "Long name"`), generics `Foo<T>`, stereotypes `<<Foo>>` with spots `<< (S,#FF7700) Name >>`,
   colors, `extends` / `implements`, bodies with `{` on the same or the next line.
 - **Members** (3.4 to 3.7): `Name : member` and body lines, visibility `- # ~ +`, `{static}`,
@@ -69,12 +70,12 @@ become qualified names. Colors are stored without the leading `#`.
 - **Relationships** (3.2, 3.3, 3.21 to 3.24, 3.31, 3.32): all heads `<|` `*` `o` `<` `x` `#` `}` `+` `^` `()`
   on either side, `--` and `..` bodies of any length, direction keywords (`-left->`, `-d->`), inline
   styles (`-[bold]->`, `-[#red,dashed,thickness=2]->`, `-[hidden]->`), `#line:red;line.bold;text:red`,
-  cardinalities, labels with `<` / `>` direction, lollipop interfaces, association classes
+  cardinalities, qualifiers `A [id : UUID] --> B`, `-[hidden]right-`, labels with `<` / `>` direction, lollipop interfaces, association classes
   `(A, B) .. C`, links between packages.
 - **Packages** (3.17 to 3.20): `package`, `namespace` (qualified names, `.Name` for the default
-  namespace, automatic namespace creation from `a.b.Name`), `set namespaceSeparator ::` / `none`, `together`.
+  namespace, automatic namespace creation from `a.b.Name`), `set namespaceSeparator ::` / `none`, `together` (a layout hint: an entity redeclared inside keeps its package and is also listed in the group).
 - **Notes** (3.8 to 3.10): `note left|right|top|bottom of X`, on the last class, floating `note "..." as N`
-  linked with `..`, `note on link`, single line (`: text`) and multi-line (`end note`).
+  linked with `..`, `note on link`, `note right of Class::member`, single line (`: text`) and multi-line (`end note`).
 - **Commands**: `hide` / `show`, `skinparam` (single line and block), `title`, `header`, `footer`,
   `caption`, `legend` (single and multi-line), `left to right direction`, `scale`, `page`, comments `'` and `/' '/`.
 
@@ -112,7 +113,7 @@ become qualified names. Colors are stored without the leading `#`.
 ### Known limitations
 
 - Preprocessor directives (`!include`, `!define`, ...) are not executed, only reported.
-- Only the element keywords of chapter 3.1 are known (no `struct`, `protocol`, `object` ...).
+- Only the element keywords of chapter 3.1 and `exception`, `struct`, `protocol`, `metaclass` are known (no `object` ...).
 - Note, title and legend text is stored raw: `\n` escapes, creole and HTML are not interpreted.
 - `skinparam` values are stored as text, `hide` / `show` rules are recorded but not applied to the model.
 - Whether `Type name` or `name : Type` is meant in a member is guessed from its shape; free text after

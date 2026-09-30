@@ -50,7 +50,8 @@ __all__ = [
 
 
 class ElementKind(Enum):
-    """Kinds of elements from chapter 3.1 of the language reference.
+    """Kinds of elements from chapter 3.1 of the language reference, plus the newer
+    ``exception``, ``struct``, ``protocol`` and ``metaclass``.
 
     ``abstract`` / ``abstract class`` are one kind, so are ``circle`` / ``()``
     and ``diamond`` / ``<>``.
@@ -64,6 +65,11 @@ class ElementKind(Enum):
     ENTITY = "entity"
     CIRCLE = "circle"
     DIAMOND = "diamond"
+    # Not in the 1.2020.22 guide, but valid in newer PlantUML class diagrams:
+    EXCEPTION = "exception"
+    STRUCT = "struct"
+    PROTOCOL = "protocol"
+    METACLASS = "metaclass"
 
 
 class Visibility(Enum):
@@ -306,6 +312,8 @@ class Relationship:
     label_arrow: Optional[str] = None  # "<" or ">" taken from the label, see chapter 3.3
     source_cardinality: Optional[str] = None
     target_cardinality: Optional[str] = None
+    source_qualifier: Optional[str] = None  # ``Customer [id : UUID] --> Address``
+    target_qualifier: Optional[str] = None
     note: Optional["Note"] = None  # ``note on link``
     from_declaration: bool = False  # generated from ``extends`` / ``implements``
     line: int = 0
@@ -349,6 +357,7 @@ class Note:
     position: Optional[NotePosition] = None
     target: Union[Entity, Package, Relationship, None] = None  # None for floating notes
     alias: Optional[str] = None  # name of a floating note: ``note "x" as N1``
+    member: Optional[str] = None  # ``note right of Class::member``: target is the class
     color: Optional[str] = None
     line: int = 0
 

@@ -166,6 +166,8 @@ def _relationship(r: Relationship, d: ClassDiagram) -> Dict[str, Any]:
         "label_arrow": r.label_arrow,
         "source_cardinality": r.source_cardinality,
         "target_cardinality": r.target_cardinality,
+        "source_qualifier": r.source_qualifier,
+        "target_qualifier": r.target_qualifier,
         "note": d.notes.index(r.note) if r.note is not None else None,  # index into "notes"
         "from_declaration": r.from_declaration,
         "line": r.line,
@@ -185,6 +187,7 @@ def _note(n: Note) -> Dict[str, Any]:
         "position": n.position.value if n.position else None,
         "target": target_value,
         "alias": n.alias,
+        "member": n.member,
         "color": n.color,
         "line": n.line,
     }

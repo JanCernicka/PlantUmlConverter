@@ -22,13 +22,16 @@ QUOTED = r'"[^"]*"'
 
 _REF = re.compile(rf"(?P<quoted>{QUOTED})|(?P<pair>\(\s*(?P<p1>{NAME}|{QUOTED})\s*,\s*(?P<p2>{NAME}|{QUOTED})\s*\))|(?P<name>{NAME})")
 _QUOTE = re.compile(QUOTED)
+_QUALIFIER = re.compile(r"\[([^\]]*)\]")
 _WS = re.compile(r"\s*")
 
 _ARROW = re.compile(
     r"""
     (?P<lh><\||<(?!<)|\*|o(?=[-.])|\#|x(?=[-.])|\}|\+|\^|\(\))?
     (?P<b1>[-.]+)
-    (?:\[(?P<style>[^\]]*)\]|(?P<dir>left|right|up|down|le|ri|do|u|d|l|r)(?=[-.]))?
+    (?:\[(?P<style>[^\]]*)\])?
+    (?:(?P<dir>left|right|up|down|le|ri|do|u|d|l|r)(?=[-.\[]))?
+    (?:\[(?P<style2>[^\]]*)\])?
     (?P<b2>[-.]*)
     (?P<rh>\|>|>(?!>)|\*|o(?![\w$])|\#|x(?![\w$])|\{|\}|\+|\^|\(\))?
     """,
@@ -95,6 +98,8 @@ class RelationSyntax:
     style: LinkStyle = field(default_factory=LinkStyle)
     left_cardinality: Optional[str] = None
     right_cardinality: Optional[str] = None
+    left_qualifier: Optional[str] = None
+    right_qualifier: Optional[str] = None
     label: Optional[str] = None
     label_arrow: Optional[str] = None
 
@@ -107,31 +112,44 @@ def parse_relation(text: str) -> Optional[RelationSyntax]:
     left = _ref(left_match)
     pos = _skip(text, left_match.end())
 
-    left_card = None
-    quote = _QUOTE.match(text, pos)
-    if quote:
-        left_card = _unquote(quote.group())
-        pos = _skip(text, quote.end())
+    left_card = left_qualifier = None
+    while True:  # "1" and [qualifier] may follow the left name, in any order
+        quote = _QUOTE.match(text, pos)
+        qualifier = _QUALIFIER.match(text, pos)
+        if quote and left_card is None:
+            left_card = _unquote(quote.group())
+            pos = _skip(text, quote.end())
+        elif qualifier and left_qualifier is None:
+            left_qualifier = qualifier.group(1).strip()
+            pos = _skip(text, qualifier.end())
+        else:
+            break
 
     arrow = _ARROW.match(text, pos)
     if not arrow:
         return None
     pos = _skip(text, arrow.end())
 
-    right_card = None
-    quote = _QUOTE.match(text, pos)
+    right_card = right_qualifier = None
     right_match = None
-    if quote:
-        after = _skip(text, quote.end())
-        candidate = _REF.match(text, after)
-        if candidate:  # "card" Name
-            right_card = _unquote(quote.group())
-            right_match, pos = candidate, candidate.end()
-    if right_match is None:  # plain Name, or a quoted name without cardinality
-        right_match = _REF.match(text, pos)
-        if not right_match:
-            return None
-        pos = right_match.end()
+    while True:
+        qualifier = _QUALIFIER.match(text, pos)
+        quote = _QUOTE.match(text, pos)
+        if qualifier and right_qualifier is None:
+            right_qualifier = qualifier.group(1).strip()
+            pos = _skip(text, qualifier.end())
+            continue
+        if quote and right_card is None:
+            candidate = _REF.match(text, _skip(text, quote.end()))
+            if candidate:  # "card" Name
+                right_card = _unquote(quote.group())
+                pos = _skip(text, quote.end())
+                continue
+        break
+    right_match = _REF.match(text, pos)  # plain Name, or a quoted name without cardinality
+    if not right_match:
+        return None
+    pos = right_match.end()
     right = _ref(right_match)
 
     tail = _parse_tail(text[pos:])
@@ -148,11 +166,14 @@ def parse_relation(text: str) -> Optional[RelationSyntax]:
         length=len(arrow.group("b1")) + len(arrow.group("b2")),
         left_cardinality=left_card,
         right_cardinality=right_card,
+        left_qualifier=left_qualifier,
+        right_qualifier=right_qualifier,
     )
     if arrow.group("dir"):
         syntax.direction = _DIRECTIONS[arrow.group("dir")[0]]
-    if arrow.group("style") is not None:
-        _apply_inline_style(syntax.style, arrow.group("style"))
+    for group in ("style", "style2"):
+        if arrow.group(group) is not None:
+            _apply_inline_style(syntax.style, arrow.group(group))
     if color_spec:
         _apply_color_spec(syntax.style, color_spec)
     if label is not None:
