@@ -26,6 +26,7 @@ from .model import (
     Legend,
     LineStyle,
     Member,
+    MemberKind,
     Note,
     NoteLink,
     NotePosition,
@@ -35,6 +36,7 @@ from .model import (
     RuleAction,
     RuleFeature,
     RuleTargetKind,
+    Separator,
     Spot,
     VisibilityRule,
 )
@@ -59,19 +61,35 @@ _KINDS = {
     "enum": ElementKind.ENUM,
     "exception": ElementKind.EXCEPTION,
     "interface": ElementKind.INTERFACE,
+    "map": ElementKind.MAP,
     "metaclass": ElementKind.METACLASS,
+    "object": ElementKind.OBJECT,
     "protocol": ElementKind.PROTOCOL,
+    "stereotype": ElementKind.STEREOTYPE,
     "struct": ElementKind.STRUCT,
     "()": ElementKind.CIRCLE,
     "<>": ElementKind.DIAMOND,
 }
+# Elements of other diagram types, accepted after ``allowmixing``.
+_MIXED_KINDS = {
+    kind.value: kind
+    for kind in (
+        ElementKind.COMPONENT, ElementKind.ACTOR, ElementKind.DATABASE, ElementKind.USECASE, ElementKind.NODE,
+        ElementKind.ARTIFACT, ElementKind.STORAGE, ElementKind.QUEUE, ElementKind.BOUNDARY, ElementKind.CONTROL,
+        ElementKind.COLLECTIONS, ElementKind.AGENT, ElementKind.RECTANGLE, ElementKind.CLOUD, ElementKind.HEXAGON,
+        ElementKind.PERSON, ElementKind.CARD, ElementKind.FILE, ElementKind.LABEL, ElementKind.FOLDER, ElementKind.FRAME,
+    )
+}
 _RULE_KINDS = {k: v for k, v in _KINDS.items() if k not in ("()", "<>")}
 
-_DECL = re.compile(
-    r"^(?:(?P<kw>abstract\s+class|abstract|annotation|circle|class|diamond|entity|enum|exception|interface|metaclass|protocol|struct)\s+"
-    r"|(?P<sym>\(\)|<>)\s*)(?P<rest>\S.*)$",
-    _I,
-)
+
+def _declaration_regex(words: List[str]) -> "re.Pattern[str]":
+    keywords = "|".join(sorted((w.replace(" ", r"\s+") for w in words), key=len, reverse=True))
+    return re.compile(rf"^(?:(?P<kw>{keywords})\s+|(?P<sym>\(\)|<>)\s*)(?P<rest>\S.*)$", _I)
+
+
+_DECL = _declaration_regex([k for k in _KINDS if k not in ("()", "<>")])
+_DECL_MIXING = _declaration_regex([k for k in _KINDS if k not in ("()", "<>")] + list(_MIXED_KINDS))
 _PACKAGE = re.compile(r"^(?P<kw>package|namespace|together)(?:\s+(?P<rest>.*))?$", _I)
 _MEMBER_ADD = re.compile(rf"^(?P<ref>{_NAME_OR_QUOTED})\s*:\s*(?P<text>.+)$")
 _BARE_STEREOTYPE = re.compile(rf"^(?P<ref>{_NAME_OR_QUOTED})\s*(?P<st>(?:<<.*?>>\s*)+)(?:#(?P<color>[^\s{{]+))?$")
@@ -80,6 +98,8 @@ _SPOT = re.compile(r"^\(\s*(?P<ch>\S)\s*,\s*#?(?P<color>[^)\s]+)\s*\)\s*(?P<name
 _INHERIT = re.compile(rf"(?P<kw>extends|implements)\s+(?P<names>{_NAME_OR_QUOTED}(?:\s*,\s*{_NAME_OR_QUOTED})*)", _I)
 _ALIAS = re.compile(rf"as\s+(?:(?P<quoted>{QUOTED})|(?P<name>{NAME}))(?=\s|$|<|#|\{{)", _I)
 _NAMES_IN_LIST = re.compile(_NAME_OR_QUOTED)
+_URL = re.compile(r"\[\[(?P<url>[^\]\s{]*)(?:\{(?P<tooltip>[^}]*)\})?(?:\s+[^\]]*)?\]\]")
+_TAG = re.compile(r"\$(?P<tag>\w+)")
 
 _POSITION = r"(?P<pos>left|right|top|bottom)"
 _NOTE_COLOR = r"(?:\s+#(?P<color>[^\s:]+))?"
@@ -104,9 +124,9 @@ _DIRECTION = re.compile(r"^(?P<d>left\s+to\s+right|top\s+to\s+bottom)\s+directio
 _SCALE = re.compile(r"^scale\s+(?P<value>(?:max\s+)?\d.*)$", _I)
 _PAGE = re.compile(r"^page\s+(?P<h>\d+)\s*x\s*(?P<v>\d+)$", _I)
 _SET = re.compile(r"^set\s+(?P<key>[A-Za-z]\w*)(?:\s+(?P<value>.*))?$", _I)
-_HIDE_SHOW = re.compile(r"^(?P<action>hide|show)\s+(?P<spec>.+)$", _I)
+_HIDE_SHOW = re.compile(r"^(?P<action>hide|show|remove|restore)\s+(?P<spec>.+)$", _I)
 _RULE_FEATURE = re.compile(r"(?:^|\s)(?:(?P<empty>empty)\s+)?(?P<feature>members|fields|attributes|methods|circle|stereotype)$", _I)
-_IGNORED = re.compile(r"^(?:newpage|allowmixing|allow_mixing|mainframe)\b", _I)
+_IGNORED = re.compile(r"^(?:newpage|mainframe)\b", _I)
 
 _POSITIONS = {p.value: p for p in NotePosition}
 _FEATURES = {"members": RuleFeature.MEMBERS, "fields": RuleFeature.FIELDS, "attributes": RuleFeature.FIELDS,
@@ -131,6 +151,9 @@ class _Decl:
     stereotypes: List[str] = field(default_factory=list)
     spot: Optional[Spot] = None
     color: Optional[str] = None
+    url: Optional[str] = None
+    tooltip: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
     extends: List[Ref] = field(default_factory=list)
     implements: List[Ref] = field(default_factory=list)
     brace: bool = False
@@ -250,6 +273,9 @@ class ClassDiagramParser:
 
     def _handle_settings(self, line: LogicalLine) -> bool:
         text = line.text
+        if re.match(r"^allow_?mixing$", text, _I):
+            self.diagram.allow_mixing = True
+            return True
         m = _DIRECTION.match(text)
         if m:
             d = " ".join(m.group("d").lower().split())
@@ -266,7 +292,7 @@ class ClassDiagramParser:
         m = _SET.match(text)
         if m:
             key, value = m.group("key"), (m.group("value") or "").strip()
-            if key.lower() == "namespaceseparator":
+            if key.lower() in ("namespaceseparator", "separator"):
                 if not value:
                     self._rep.error("'set namespaceSeparator' needs a value", line.number)
                 else:
@@ -284,6 +310,8 @@ class ClassDiagramParser:
             return False
         name = _compact_stereotype(m.group("name"))
         value = (m.group("value") or "").strip()
+        if name == "{":  # skinparam { Key Value ... } without a prefix
+            name, value = "", "{"
         if value == "{":  # skinparam class { Key Value ... }
             for body in self._read_until(re.compile(r"^\}$"), f"skinparam {name} block", line.number):
                 entry = _SKIN_BLOCK_LINE.match(body)
@@ -349,7 +377,7 @@ class ClassDiagramParser:
         if not m:
             return False
         spec = m.group("spec").strip()
-        if not re.match(r'[\w"]|<<', spec):
+        if not re.match(r'[\w"$@]|<<', spec):
             return False  # "hide --> x": a relationship of a class named hide
         rule = VisibilityRule(RuleAction(m.group("action").lower()), line=line.number)
         feature = _RULE_FEATURE.search(spec)
@@ -359,6 +387,11 @@ class ClassDiagramParser:
             spec = spec[: feature.start()].strip()
         if not spec:
             rule.target_kind = RuleTargetKind.ALL
+        elif spec.startswith("$") and " " not in spec:
+            rule.target_kind = RuleTargetKind.TAG
+            rule.target = spec[1:]
+        elif spec.lower() == "@unlinked":
+            rule.target_kind = RuleTargetKind.UNLINKED
         elif spec.startswith("<<"):
             rule.target_kind = RuleTargetKind.STEREOTYPE
             rule.target = _compact_stereotype(spec)[2:-2] if spec.endswith(">>") else spec
@@ -407,7 +440,10 @@ class ClassDiagramParser:
             self._stack.append(existing)
             self._remember_body_end(decl)
             return True
-        package = Package(decl.name, qualified, kind, decl.display, decl.stereotypes, decl.color, line=line.number)
+        package = Package(
+            decl.name, qualified, kind, decl.display, decl.stereotypes, decl.color,
+            url=decl.url, tooltip=decl.tooltip, tags=decl.tags, line=line.number,
+        )
         self._attach_package(package)
         self.diagram.packages[qualified] = package
         logger.debug("line %d: opened %s '%s'", line.number, kind.value, qualified)
@@ -448,14 +484,14 @@ class ClassDiagramParser:
     # --------------------------------------------------------------- declarations
 
     def _handle_declaration(self, line: LogicalLine) -> bool:
-        m = _DECL.match(line.text)
+        m = (_DECL_MIXING if self.diagram.allow_mixing else _DECL).match(line.text)
         if not m:
             return False
         decl = _parse_decl(m.group("rest"))
         if decl is None:
             return False  # e.g. "class <|-- Foo": a relationship between an entity named "class"
         keyword = " ".join((m.group("kw") or m.group("sym")).lower().split())
-        kind = _KINDS[keyword]
+        kind = _KINDS.get(keyword) or _MIXED_KINDS[keyword]
         if decl.junk:
             self._rep.warning(f"unexpected text ignored in declaration: {decl.junk!r}", line.number)
 
@@ -501,6 +537,9 @@ class ClassDiagramParser:
                 entity.stereotypes.append(stereotype)
         entity.spot = decl.spot or entity.spot
         entity.color = decl.color or entity.color
+        entity.url = decl.url or entity.url
+        entity.tooltip = decl.tooltip or entity.tooltip
+        entity.tags.extend(t for t in decl.tags if t not in entity.tags)
         self._last_entity = entity
         return entity
 
@@ -520,7 +559,10 @@ class ClassDiagramParser:
         else:
             body = ([inline] if inline else []) + self._read_until(re.compile(r"^\}$"), f"body of '{entity.qualified_name}'", start_line)
         for text in body:
-            member = parse_member(text, start_line)
+            if entity.kind is ElementKind.MAP:
+                member = _parse_map_entry(text, start_line)
+            else:
+                member = parse_member(text, start_line, enum_constant=entity.kind is ElementKind.ENUM)
             if member is not None:
                 entity.members.append(member)
 
@@ -595,6 +637,13 @@ class ClassDiagramParser:
         self._last_entity = entity
         return entity
 
+    def _resolve_port(self, ref: Ref, line: int) -> Tuple[Union[Entity, Package, Note], Optional[str]]:
+        """``Class::member`` in a relationship is an existing class with a member to attach to."""
+        owner, member = self._split_member_ref(ref, line)
+        if owner is not None:
+            return owner, member
+        return self._resolve_endpoint(ref, line), None
+
     def _resolve_entity(self, ref: Ref, line: int, implicit_kind: ElementKind = ElementKind.CLASS) -> Optional[Entity]:
         target = self._resolve_endpoint(ref, line, implicit_kind)
         if isinstance(target, Entity):
@@ -612,8 +661,8 @@ class ClassDiagramParser:
             self._association_class(syntax, line.number)
             return True
 
-        left = self._resolve_endpoint(syntax.left, line.number)
-        right = self._resolve_endpoint(syntax.right, line.number)
+        left, left_member = self._resolve_port(syntax.left, line.number)
+        right, right_member = self._resolve_port(syntax.right, line.number)
         for unknown in syntax.style.unknown:
             self._rep.warning(f"unknown link style '{unknown}' ignored", line.number)
 
@@ -641,6 +690,10 @@ class ClassDiagramParser:
             target_cardinality=syntax.right_cardinality,
             source_qualifier=syntax.left_qualifier,
             target_qualifier=syntax.right_qualifier,
+            source_member=left_member,
+            target_member=right_member,
+            socket=syntax.socket,
+            norank=style.norank,
             line=line.number,
         )
         self.diagram.relationships.append(relationship)
@@ -693,7 +746,11 @@ class ClassDiagramParser:
         entity = self._resolve_entity(ref, line.number)
         if entity is None:
             return True
-        member = parse_member(m.group("text"), line.number)
+        member = (
+            _parse_map_entry(m.group("text"), line.number)
+            if entity.kind is ElementKind.MAP
+            else parse_member(m.group("text"), line.number, enum_constant=entity.kind is ElementKind.ENUM)
+        )
         if member is not None:
             entity.members.append(member)
             self._last_entity = entity
@@ -835,6 +892,17 @@ def _parse_decl(rest: str) -> Optional[_Decl]:
                 break
             decl.color = m.group(1)
             pos += m.end()
+        elif tail.startswith("[["):
+            url = _URL.match(tail)
+            if not url:
+                decl.junk = tail
+                break
+            decl.url, decl.tooltip = url.group("url"), url.group("tooltip")
+            pos += url.end()
+        elif tail[0] == "$" and _TAG.match(tail):
+            tag = _TAG.match(tail)
+            decl.tags.append(tag.group("tag"))  # type: ignore[union-attr]
+            pos += tag.end()  # type: ignore[union-attr]
         elif tail[0] == "{":
             decl.brace = True
             decl.inline_body = tail[1:]
@@ -857,6 +925,17 @@ def _parse_decl(rest: str) -> Optional[_Decl]:
                 decl.junk = tail
                 break
     return decl
+
+
+def _parse_map_entry(text: str, line: int) -> Union[Member, Separator, None]:
+    """``key => value`` in a map body becomes a field: name is the key, default_value the value."""
+    key, arrow, value = text.partition("=>")
+    if not arrow:
+        return parse_member(text, line)
+    key = key.strip()
+    if not key:
+        return None
+    return Member(MemberKind.FIELD, key, text.strip(), default_value=value.strip() or None, line=line)
 
 
 def _add_stereotype(decl: _Decl, content: str) -> None:

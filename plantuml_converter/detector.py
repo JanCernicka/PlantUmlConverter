@@ -50,7 +50,7 @@ _SEQUENCE_ARROW = re.compile(r"->>|<<-")  # only looked for left of the label
 
 # Constructs that only exist in class diagrams.
 _CLASS_DECL = re.compile(
-    r"^(?:(?:abstract\s+class|abstract|annotation|class|diamond|enum|exception|metaclass|protocol|struct)\s+[\"\w.]|<>\s*\w)", _I
+    r"^(?:(?:abstract\s+class|abstract|annotation|class|diamond|enum|exception|metaclass|protocol|stereotype|struct)\s+[\"\w.]|<>\s*\w)", _I
 )
 _CLASS_PATTERNS = [
     re.compile(r"^(?:namespace|together)\b.*\{$", _I),

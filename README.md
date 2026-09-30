@@ -60,35 +60,46 @@ become qualified names. Colors are stored without the leading `#`.
 ## Supported syntax
 
 - **Elements** (3.1): `class`, `abstract`, `abstract class`, `annotation`, `circle`, `()`,
-  `diamond`, `<>`, `entity`, `enum`, `interface`, plus `exception`, `struct`, `protocol`, `metaclass`
-  (newer PlantUML, not in the 1.2020.22 guide); alias and label (`class "Long name" as a`,
+  `diamond`, `<>`, `entity`, `enum`, `interface`, plus `exception`, `struct`, `protocol`, `metaclass`,
+  `stereotype`, `object` (body `name = value`) and `map` (body `key => value`) (newer PlantUML, not in the
+  1.2020.22 guide); after `allowmixing` also `component`, `actor`, `database`, `usecase`, `node` and similar
+  (`ElementKind`); alias and label (`class "Long name" as a`,
   `class a as "Long name"`), generics `Foo<T>`, stereotypes `<<Foo>>` with spots `<< (S,#FF7700) Name >>`,
-  colors, `extends` / `implements`, bodies with `{` on the same or the next line.
+  colors, links `[[url{tooltip}]]`, tags `$tag`, `extends` / `implements`, bodies with `{` on the same or the next line.
 - **Members** (3.4 to 3.7): `Name : member` and body lines, visibility `- # ~ +`, `{static}`,
   `{classifier}`, `{abstract}`, `{field}`, `{method}` at the start or end, both `Type name` and
-  `name : Type` order, parameters, default values, separators with titles.
+  `name : Type` order, parameters with defaults, enum constants with arguments, separators with titles.
 - **Relationships** (3.2, 3.3, 3.21 to 3.24, 3.31, 3.32): all heads `<|` `*` `o` `<` `x` `#` `}` `+` `^` `()`
   on either side, `--` and `..` bodies of any length, direction keywords (`-left->`, `-d->`), inline
   styles (`-[bold]->`, `-[#red,dashed,thickness=2]->`, `-[hidden]->`), `#line:red;line.bold;text:red`,
-  cardinalities, qualifiers `A [id : UUID] --> B`, `-[hidden]right-`, labels with `<` / `>` direction, lollipop interfaces, association classes
+  cardinalities, qualifiers `A [id : UUID] --> B`, `-[hidden]right-`, labels with `<` / `>` direction, lollipop interfaces, sockets
+  (`-0)-`, `-(0-`, `-(0)-`), `-[norank]->`, links to members `A::x --> B::y`, association classes
   `(A, B) .. C`, links between packages.
 - **Packages** (3.17 to 3.20): `package`, `namespace` (qualified names, `.Name` for the default
   namespace, automatic namespace creation from `a.b.Name`), `set namespaceSeparator ::` / `none`, `together` (a layout hint: an entity redeclared inside keeps its package and is also listed in the group).
 - **Notes** (3.8 to 3.10): `note left|right|top|bottom of X`, on the last class, floating `note "..." as N`
   linked with `..`, `note on link`, `note right of Class::member`, single line (`: text`) and multi-line (`end note`).
-- **Commands**: `hide` / `show`, `skinparam` (single line and block), `title`, `header`, `footer`,
+- **Preprocessor** (chapter 20): variables, `!if` / `!elseif` / `!else` / `!endif`, `!ifdef`, `!while`,
+  `!procedure`, `!function` / `!return`, `!unquoted`, default and keyword arguments, legacy `!define` /
+  `!definelong`, `##`, builtin functions such as `%upper()` or `%strlen()`, `!assert`. Macros are expanded before
+  the diagram is detected and parsed. Not supported (warning, directive dropped): `!include`, `!import`,
+  `!includesub`, `!theme`; `%date()`, `%getenv()` and other environment dependent builtins stay as written.
+- **Commands**: `hide` / `show` / `remove` / `restore` (also `$tag` and `@unlinked` selectors), `skinparam`
+  (single line, block and anonymous `skinparam {`), `set namespaceSeparator` / `set separator`, `title`, `header`, `footer`, `title`, `header`, `footer`,
   `caption`, `legend` (single and multi-line), `left to right direction`, `scale`, `page`, comments `'` and `/' '/`.
 
 ## How the compiler works
 
-1. **Preprocessor** (`preprocessor.py`) removes comments and cuts the text into `@start...` / `@end...` blocks.
+1. **Block scanner** (`preprocessor.py`) removes comments and cuts the text into `@start...` / `@end...` blocks.
    Text outside of blocks is ignored. A file can contain several diagrams.
-2. **Detector** (`detector.py`) decides whether a `@startuml` block is a class diagram. Like PlantUML,
+2. **Macro expansion** (`macros.py`) runs the PlantUML preprocessor on each `@startuml` block. Runaway
+   recursion and endless `!while` loops are cut off with an error.
+3. **Detector** (`detector.py`) decides whether a `@startuml` block is a class diagram. Like PlantUML,
    the first line that only one diagram type understands decides: `class Foo`, `namespace x {`, `A <|-- B`
    mean class diagram, `participant`, `component`, `state`, `start`, `[*] -->`, `(use case)` ... mean something
    else and the block is listed in `result.skipped`. A block without any such line (for example only `a -- b`)
    is treated as a class diagram, because that is what the program is meant to receive.
-3. **Parser** (`parser.py`, with `relations.py` and `members.py`) builds the model statement by statement.
+4. **Parser** (`parser.py`, with `relations.py` and `members.py`) builds the model statement by statement.
 
 ## Edge cases and decisions
 
@@ -112,8 +123,9 @@ become qualified names. Colors are stored without the leading `#`.
 
 ### Known limitations
 
-- Preprocessor directives (`!include`, `!define`, ...) are not executed, only reported.
-- Only the element keywords of chapter 3.1 and `exception`, `struct`, `protocol`, `metaclass` are known (no `object` ...).
+- `!include`, `!import`, `!includesub` and `!theme` are not executed, only reported.
+- An `object` / `map` / `component` ... diagram without any class is another diagram type and is skipped;
+  those elements are only accepted inside a class diagram (`object`, `map`) or after `allowmixing`.
 - Note, title and legend text is stored raw: `\n` escapes, creole and HTML are not interpreted.
 - `skinparam` values are stored as text, `hide` / `show` rules are recorded but not applied to the model.
 - Whether `Type name` or `name : Type` is meant in a member is guessed from its shape; free text after
@@ -149,6 +161,7 @@ fuzz test that damages them randomly.
 plantuml_converter/
   model.py          object model
   preprocessor.py   comments, @start/@end blocks
+  macros.py         PlantUML preprocessor (variables, functions, procedures, conditions)
   detector.py       class diagram or not
   parser.py         statements to model
   relations.py      syntax of relationship lines

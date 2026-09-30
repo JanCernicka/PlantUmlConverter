@@ -28,7 +28,7 @@ def test_to_dict_is_json_serialisable_and_uses_names_for_references():
     assert diagram["notes"][0]["target"] == "A"
     by_name = {e["qualified_name"]: e for e in diagram["entities"]}
     assert by_name["C"]["package"] == "p"
-    assert by_name["A"]["members"][0]["parameters"] == [{"name": "x", "type": "int"}]
+    assert by_name["A"]["members"][0]["parameters"] == [{"name": "x", "type": "int", "default_value": None}]
     assert diagram["association_classes"][0]["entity"] == "D"
     children = diagram["root"]["children"]
     assert {"entity": "A"} in children

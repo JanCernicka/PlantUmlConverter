@@ -17,8 +17,14 @@ _OPENERS = "([<{"
 _CLOSERS = ")]>}"
 
 
-def parse_member(text: str, line: int = 0) -> Union[Member, Separator, None]:
-    """Parse a body line. Returns ``None`` for an empty line."""
+_ENUM_CONSTANT = re.compile(r"^(?P<name>[\w$]+)\s*(?:\((?P<args>.*)\))?$")
+
+
+def parse_member(text: str, line: int = 0, enum_constant: bool = False) -> Union[Member, Separator, None]:
+    """Parse a body line. Returns ``None`` for an empty line.
+
+    With ``enum_constant`` a bare ``NAME`` or ``NAME(args)`` is a constant (a field whose
+    ``parameters`` are the constructor arguments), not a method."""
     text = text.strip()
     if not text:
         return None
@@ -53,7 +59,14 @@ def parse_member(text: str, line: int = 0) -> Union[Member, Separator, None]:
 
     text = text.strip()
     raw = text
-    kind = forced or (MemberKind.METHOD if "(" in text else MemberKind.FIELD)
+    if enum_constant and forced is None and visibility is None:
+        constant = _ENUM_CONSTANT.match(text)
+        if constant:
+            member = Member(MemberKind.FIELD, constant.group("name"), raw, is_static=is_static, is_abstract=is_abstract, line=line)
+            if constant.group("args") is not None:
+                member.parameters = [Parameter(a.strip()) for a in _split_top_level(constant.group("args"), ",") if a.strip()]
+            return member
+    kind = forced or (MemberKind.METHOD if _looks_like_method(text) else MemberKind.FIELD)
 
     member = Member(
         kind=kind,
@@ -69,6 +82,15 @@ def parse_member(text: str, line: int = 0) -> Union[Member, Separator, None]:
     else:
         _fill_field(member, text)
     return member
+
+
+def _looks_like_method(text: str) -> bool:
+    """Parentheses make a method, unless a colon comes first: ``fn : (int) -> int`` is a field."""
+    paren = text.find("(")
+    if paren < 0:
+        return False
+    colon = _COLON.search(text)
+    return not (colon and colon.start() < paren)
 
 
 def _trailing_modifier(text: str) -> Optional["re.Match[str]"]:
@@ -128,15 +150,19 @@ def _parse_parameters(params: str) -> List[Parameter]:
         part = part.strip()
         if not part:
             continue
+        default = None
+        eq = _top_level_index(part, "=")
+        if eq >= 0:
+            part, default = part[:eq].strip(), part[eq + 1 :].strip() or None
         colon = _COLON.search(part)
         if colon:
-            result.append(Parameter(part[: colon.start()].strip(), part[colon.end() :].strip() or None))
+            result.append(Parameter(part[: colon.start()].strip(), part[colon.end() :].strip() or None, default))
             continue
         split = _split_type_name(part)
         if split:
-            result.append(Parameter(split[1], split[0]))
+            result.append(Parameter(split[1], split[0], default))
         else:
-            result.append(Parameter(part))  # a single word: could be a name or a type, kept as name
+            result.append(Parameter(part, None, default))  # a single word: could be a name or a type, kept as name
     return result
 
 
@@ -175,8 +201,14 @@ def _matching_paren(text: str, open_idx: int) -> int:
 
 def _top_level_index(text: str, char: str) -> int:
     depth = 0
+    quote = ""
     for i, ch in enumerate(text):
-        if ch in _OPENERS:
+        if quote:
+            if ch == quote and text[i - 1] != "\\":
+                quote = ""
+        elif ch == '"' or (ch == "'" and not (i and text[i - 1].isalnum())):  # it's is not a quote
+            quote = ch
+        elif ch in _OPENERS:
             depth += 1
         elif ch in _CLOSERS:
             depth -= 1
@@ -192,8 +224,14 @@ def _split_top_level(text: str, sep: str) -> List[str]:
     parts: List[str] = []
     depth = 0
     start = 0
+    quote = ""
     for i, ch in enumerate(text):
-        if ch in _OPENERS:
+        if quote:
+            if ch == quote and text[i - 1] != "\\":
+                quote = ""
+        elif ch == '"' or (ch == "'" and not (i and text[i - 1].isalnum())):  # it's is not a quote
+            quote = ch
+        elif ch in _OPENERS:
             depth += 1
         elif ch in _CLOSERS:
             depth -= 1

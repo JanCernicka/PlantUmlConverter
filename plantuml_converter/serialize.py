@@ -116,6 +116,9 @@ def _entity(e: Entity) -> Dict[str, Any]:
         "stereotypes": list(e.stereotypes),
         "spot": _plain(e.spot),
         "color": e.color,
+        "url": e.url,
+        "tooltip": e.tooltip,
+        "tags": list(e.tags),
         "extends": [x.qualified_name for x in e.extends],
         "implements": [x.qualified_name for x in e.implements],
         "members": [_member(m) for m in e.members],
@@ -138,6 +141,9 @@ def _package(p: Package, children: bool = True) -> Dict[str, Any]:
         "display_name": p.display_name,
         "stereotypes": list(p.stereotypes),
         "color": p.color,
+        "url": p.url,
+        "tooltip": p.tooltip,
+        "tags": list(p.tags),
         "line": p.line,
     }
     if children:
@@ -168,6 +174,10 @@ def _relationship(r: Relationship, d: ClassDiagram) -> Dict[str, Any]:
         "target_cardinality": r.target_cardinality,
         "source_qualifier": r.source_qualifier,
         "target_qualifier": r.target_qualifier,
+        "source_member": r.source_member,
+        "target_member": r.target_member,
+        "socket": r.socket,
+        "norank": r.norank,
         "note": d.notes.index(r.note) if r.note is not None else None,  # index into "notes"
         "from_declaration": r.from_declaration,
         "line": r.line,

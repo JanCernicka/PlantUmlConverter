@@ -48,9 +48,18 @@ class CompilationError(PlantUmlError):
 class Reporter:
     """Collects diagnostics and logs each of them at the matching log level."""
 
-    def __init__(self, logger: logging.Logger) -> None:
+    def __init__(self, logger: logging.Logger, buffered: bool = False) -> None:
         self._logger = logger
+        self._buffered = buffered  # keep diagnostics silent until flush() is called
+        self._pending: List[Diagnostic] = []
         self.items: List[Diagnostic] = []
+
+    def flush(self) -> None:
+        """Log what was collected while buffering and stop buffering."""
+        self._buffered = False
+        for diagnostic in self._pending:
+            self._log(diagnostic)
+        self._pending = []
 
     def warning(self, message: str, line: Optional[int] = None) -> None:
         self._add(Diagnostic(Severity.WARNING, message, line))
@@ -60,5 +69,11 @@ class Reporter:
 
     def _add(self, diagnostic: Diagnostic) -> None:
         self.items.append(diagnostic)
+        if self._buffered:
+            self._pending.append(diagnostic)
+        else:
+            self._log(diagnostic)
+
+    def _log(self, diagnostic: Diagnostic) -> None:
         log = self._logger.warning if diagnostic.severity is Severity.WARNING else self._logger.error
         log("%s", diagnostic)

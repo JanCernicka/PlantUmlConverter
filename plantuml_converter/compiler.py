@@ -10,6 +10,7 @@ from typing import List, Optional, Union
 from .detector import detect
 from .diagnostics import CompilationError, Diagnostic, Reporter, Severity
 from .model import ClassDiagram
+from .macros import Preprocessor
 from .parser import ClassDiagramParser
 from .preprocessor import split_blocks
 
@@ -67,6 +68,11 @@ def compile_text(text: str, *, strict: bool = False) -> CompilationResult:
             result.skipped.append(SkippedBlock(block.kind, block.start_line, reason))
             continue
 
+        # Macros change what the statements are, so they are expanded before detection. The
+        # diagnostics stay silent unless the block really is a class diagram.
+        block_reporter = Reporter(logger, buffered=True)
+        block.lines = Preprocessor(block_reporter).run(block.lines)
+
         detection = detect(block.lines)
         if not detection.is_class_diagram:
             logger.info("line %d: skipping @startuml block: %s", block.start_line, detection.reason)
@@ -74,7 +80,7 @@ def compile_text(text: str, *, strict: bool = False) -> CompilationResult:
             continue
 
         logger.info("line %d: compiling class diagram (%s)", block.start_line, detection.reason)
-        block_reporter = Reporter(logger)
+        block_reporter.flush()
         diagram = ClassDiagramParser(block, block_reporter).parse()
         if not any(line.text for line in block.lines):
             block_reporter.warning("diagram is empty", block.start_line)

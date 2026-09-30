@@ -139,7 +139,7 @@ def test_layout_commands(compile_diagram):
 
 
 def test_unsupported_but_valid_commands_warn(compile_diagram):
-    d = compile_diagram("newpage\nallowmixing\nclass A")
+    d = compile_diagram("newpage\nmainframe foo\nclass A")
     assert [x.severity for x in d.diagnostics] == [Severity.WARNING, Severity.WARNING] and "A" in d.entities
 
 

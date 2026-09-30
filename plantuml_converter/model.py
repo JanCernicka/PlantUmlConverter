@@ -51,7 +51,7 @@ __all__ = [
 
 class ElementKind(Enum):
     """Kinds of elements from chapter 3.1 of the language reference, plus the newer
-    ``exception``, ``struct``, ``protocol`` and ``metaclass``.
+    ``exception``, ``struct``, ``protocol``, ``metaclass``, ``stereotype``, ``object`` and ``map``.
 
     ``abstract`` / ``abstract class`` are one kind, so are ``circle`` / ``()``
     and ``diamond`` / ``<>``.
@@ -70,6 +70,31 @@ class ElementKind(Enum):
     STRUCT = "struct"
     PROTOCOL = "protocol"
     METACLASS = "metaclass"
+    STEREOTYPE = "stereotype"
+    OBJECT = "object"  # body lines ``name = value`` are fields with a default value
+    MAP = "map"  # body lines ``key => value`` are fields: name is the key, default_value the value
+    # Elements of other diagram types, only accepted after ``allowmixing``:
+    COMPONENT = "component"
+    ACTOR = "actor"
+    DATABASE = "database"
+    USECASE = "usecase"
+    NODE = "node"
+    ARTIFACT = "artifact"
+    STORAGE = "storage"
+    QUEUE = "queue"
+    BOUNDARY = "boundary"
+    CONTROL = "control"
+    COLLECTIONS = "collections"
+    AGENT = "agent"
+    RECTANGLE = "rectangle"
+    CLOUD = "cloud"
+    HEXAGON = "hexagon"
+    PERSON = "person"
+    CARD = "card"
+    FILE = "file"
+    LABEL = "label"
+    FOLDER = "folder"
+    FRAME = "frame"
 
 
 class Visibility(Enum):
@@ -144,6 +169,7 @@ class RelationKind(Enum):
     ASSOCIATION = "association"  # --
     NESTED = "nested"  # +--
     LOLLIPOP = "lollipop"  # ()--
+    SOCKET = "socket"  # -0)-  -(0-  -(0)-
     OTHER = "other"  # x--, #--, }--, ^--, mixed heads
 
 
@@ -157,6 +183,8 @@ class NotePosition(Enum):
 class RuleAction(Enum):
     HIDE = "hide"
     SHOW = "show"
+    REMOVE = "remove"  # like hide, but the element takes no space in the layout
+    RESTORE = "restore"  # undoes remove
 
 
 class RuleFeature(Enum):
@@ -174,6 +202,8 @@ class RuleTargetKind(Enum):
     ELEMENT_KIND = "element kind"  # hide class / interface / enum ...
     STEREOTYPE = "stereotype"  # hide <<Foo>> circle
     ENTITY = "entity"  # hide Foo methods
+    TAG = "tag"  # hide $tag
+    UNLINKED = "unlinked"  # hide @unlinked
 
 
 class LayoutDirection(Enum):
@@ -188,6 +218,7 @@ class LayoutDirection(Enum):
 class Parameter:
     name: str
     type: Optional[str] = None
+    default_value: Optional[str] = None
 
 
 @dataclass
@@ -239,7 +270,10 @@ class Entity:
     generics: Optional[str] = None  # text between < > in ``class Foo<T>``
     stereotypes: List[str] = field(default_factory=list)
     spot: Optional[Spot] = None
-    color: Optional[str] = None
+    color: Optional[str] = None  # as written after '#', may be a spec like "pink;line:red;line.dashed"
+    url: Optional[str] = None  # ``class Foo [[https://example.com{tooltip}]]``
+    tooltip: Optional[str] = None
+    tags: List[str] = field(default_factory=list)  # ``class Foo $tag``, without the '$'
     extends: List["Entity"] = field(default_factory=list)  # from ``extends`` keyword
     implements: List["Entity"] = field(default_factory=list)  # from ``implements`` keyword
     members: List[Union[Member, Separator]] = field(default_factory=list)
@@ -272,6 +306,9 @@ class Package:
     display_name: Optional[str] = None
     stereotypes: List[str] = field(default_factory=list)
     color: Optional[str] = None
+    url: Optional[str] = None
+    tooltip: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
     children: List[Union[Entity, "Package"]] = field(default_factory=list)
     line: int = 0
 
@@ -314,6 +351,10 @@ class Relationship:
     target_cardinality: Optional[str] = None
     source_qualifier: Optional[str] = None  # ``Customer [id : UUID] --> Address``
     target_qualifier: Optional[str] = None
+    source_member: Optional[str] = None  # ``Class::member --> Other``: the link starts at a member
+    target_member: Optional[str] = None
+    socket: Optional[str] = None  # "0)", "(0" or "(0)" from ``-0)-``, ``-(0-``, ``-(0)-``
+    norank: bool = False  # ``-[norank]->``: layout hint, the link does not influence ranking
     note: Optional["Note"] = None  # ``note on link``
     from_declaration: bool = False  # generated from ``extends`` / ``implements``
     line: int = 0
@@ -323,6 +364,8 @@ class Relationship:
         s, t = self.source_head, self.target_head
         heads = {s, t} - {ArrowHead.NONE}
         dotted = self.line_style is not LineStyle.SOLID
+        if self.socket:
+            return RelationKind.SOCKET
         if not heads:
             return RelationKind.ASSOCIATION
         if len(heads) == 1:
@@ -433,6 +476,7 @@ class ClassDiagram:
     scale: Optional[str] = None  # raw text after ``scale``
     page: Optional[Tuple[int, int]] = None  # ``page 2x2``
     namespace_separator: Optional[str] = "."  # None after ``set namespaceSeparator none``
+    allow_mixing: bool = False  # ``allowmixing``: elements of other diagram types are accepted
     skinparams: Dict[str, str] = field(default_factory=dict)
     root: Package = field(default_factory=lambda: Package("", "", PackageKind.ROOT))
     entities: Dict[str, Entity] = field(default_factory=dict)  # by qualified name

@@ -32,6 +32,7 @@ _ARROW = re.compile(
     (?:\[(?P<style>[^\]]*)\])?
     (?:(?P<dir>left|right|up|down|le|ri|do|u|d|l|r)(?=[-.\[]))?
     (?:\[(?P<style2>[^\]]*)\])?
+    (?P<sock>\(0\)|0\)|\(0)?
     (?P<b2>[-.]*)
     (?P<rh>\|>|>(?!>)|\*|o(?![\w$])|\#|x(?![\w$])|\{|\}|\+|\^|\(\))?
     """,
@@ -80,6 +81,7 @@ class LinkStyle:
     line_style: Optional[LineStyle] = None  # explicit [dashed] / [dotted] / [plain]
     bold: bool = False
     hidden: bool = False
+    norank: bool = False
     color: Optional[str] = None  # without the leading '#'
     text_color: Optional[str] = None
     thickness: Optional[int] = None
@@ -94,6 +96,7 @@ class RelationSyntax:
     right_head: ArrowHead = ArrowHead.NONE
     dotted: bool = False
     length: int = 1
+    socket: Optional[str] = None
     direction: Optional[Direction] = None
     style: LinkStyle = field(default_factory=LinkStyle)
     left_cardinality: Optional[str] = None
@@ -164,8 +167,9 @@ def parse_relation(text: str) -> Optional[RelationSyntax]:
         right_head=_RIGHT_HEADS.get(arrow.group("rh") or "", ArrowHead.NONE),
         dotted="." in arrow.group("b1") + arrow.group("b2"),
         length=len(arrow.group("b1")) + len(arrow.group("b2")),
-        left_cardinality=left_card,
-        right_cardinality=right_card,
+        socket=arrow.group("sock"),
+        left_cardinality=left_card or None,
+        right_cardinality=right_card or None,
         left_qualifier=left_qualifier,
         right_qualifier=right_qualifier,
     )
@@ -255,6 +259,8 @@ def _apply_inline_style(style: LinkStyle, text: str) -> None:
             style.line_style = LineStyle.SOLID
         elif low == "hidden":
             style.hidden = True
+        elif low == "norank":
+            style.norank = True
         elif low.startswith("thickness="):
             try:
                 style.thickness = int(low.split("=", 1)[1])
