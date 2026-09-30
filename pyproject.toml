@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plantuml-converter"
+version = "0.1.0"
+description = "Compiles PlantUML class diagrams into a Python object model"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+plantuml-converter = "plantuml_converter.cli:main"
+
+[tool.setuptools]
+packages = ["plantuml_converter"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
