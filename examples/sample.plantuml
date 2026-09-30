@@ -1,10 +1,24 @@
-@startuml
-class Customer {
-  - name : string
-  + place_order() : void
+@startuml "Order system"
+title Order system
+
+package shop {
+  class Customer {
+    - name : string
+    + place_order() : void
+  }
+
+  abstract class Payment {
+    {abstract} + pay(amount : Money) : bool
+  }
 }
 
 class Order
-
-Customer "1" -- "*" Order
+enum Status {
+  NEW
+  PAID
+}
+Payment <|-- CardPayment
+Customer "1" -- "*" Order : places >
+Order *-- Status
+note right of Customer : the buyer
 @enduml
