@@ -1,0 +1,552 @@
+@startuml ecommerce_architecture
+title E-Commerce Platform - Core Architecture (v2.1)
+header Internal / Draft
+footer Page %page% of %lastpage%
+
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam class {
+  BackgroundColor<<Entity>> #E8F4FD
+  BackgroundColor<<Service>> #FFF4E0
+  BackgroundColor<<Controller>> #E9F7EF
+  BorderColor #333333
+}
+skinparam stereotypeCBackgroundColor #FFD966
+hide empty members
+
+' =========================================================
+' SHARED KERNEL
+' =========================================================
+package "com.shop.common" <<Folder>> {
+
+  interface Identifiable<ID> {
+    +getId() : ID
+  }
+
+  interface Auditable {
+    +getCreatedAt() : Instant
+    +getUpdatedAt() : Instant
+    +getCreatedBy() : String
+  }
+
+  abstract class BaseEntity<ID extends Serializable> implements Identifiable, Auditable {
+    #id : ID
+    #createdAt : Instant
+    #updatedAt : Instant
+    #createdBy : String
+    -version : long
+    ..
+    +{abstract} validate() : void
+    +equals(o : Object) : boolean
+    +hashCode() : int
+    ~touch() : void
+  }
+
+  interface Repository<T, ID> {
+    +findById(id : ID) : Optional<T>
+    +findAll(page : Pageable) : Page<T>
+    +save(entity : T) : T
+    +delete(entity : T) : void
+    +{static} noop() : Repository<T, ID>
+  }
+
+  annotation Transactional {
+    +propagation : Propagation
+    +readOnly : boolean
+  }
+
+  class Money <<ValueObject>> {
+    -amount : BigDecimal
+    -currency : Currency
+    +add(other : Money) : Money
+    +multiply(factor : int) : Money
+    +{static} ZERO : Money
+    +{static} of(amount : String, cur : String) : Money
+  }
+
+  exception DomainException {
+    -code : ErrorCode
+    +DomainException(code : ErrorCode, msg : String)
+  }
+
+  enum ErrorCode {
+    NOT_FOUND
+    VALIDATION_FAILED
+    INSUFFICIENT_STOCK
+    PAYMENT_DECLINED
+    CONFLICT
+    --
+    -httpStatus : int
+    +toHttpStatus() : int
+  }
+
+  DomainException --> ErrorCode
+}
+
+' =========================================================
+' DOMAIN
+' =========================================================
+package "com.shop.domain" {
+
+  package customer {
+    class Customer <<Entity>> {
+      -email : String
+      -passwordHash : String
+      -tier : LoyaltyTier
+      -addresses : List<Address>
+      __ behaviour __
+      +register(email : String, pwd : String) : void
+      +addAddress(a : Address) : void
+      +upgradeTier() : void
+      -hash(pwd : String) : String
+    }
+
+    class Address <<ValueObject>> {
+      +street : String
+      +city : String
+      +zip : String
+      +country : String
+      +isDefault : boolean
+    }
+
+    enum LoyaltyTier {
+      BRONZE
+      SILVER
+      GOLD
+      PLATINUM
+    }
+  }
+
+  package catalog {
+    abstract class Product <<Entity>> {
+      -sku : String
+      -name : String
+      -price : Money
+      -tags : Set<String>
+      +{abstract} shippingWeight() : double
+      +applyDiscount(d : Discount) : Money
+    }
+
+    class PhysicalProduct {
+      -weightKg : double
+      -dimensions : Dimensions
+      +shippingWeight() : double
+    }
+
+    class DigitalProduct {
+      -downloadUrl : URI
+      -licenseKeyTemplate : String
+      +shippingWeight() : double
+      +generateLicense() : String
+    }
+
+    class Bundle {
+      -items : List<Product>
+      +shippingWeight() : double
+    }
+
+    class Category <<Entity>> {
+      -name : String
+      -slug : String
+      -parent : Category
+      +path() : List<Category>
+    }
+
+    struct Dimensions {
+      width : double
+      height : double
+      depth : double
+    }
+
+    class Inventory <<Entity>> {
+      -quantityOnHand : int
+      -reserved : int
+      +reserve(qty : int) : void
+      +release(qty : int) : void
+      +available() : int
+    }
+  }
+
+  package ordering {
+    class Order <<Entity>> <<AggregateRoot>> {
+      -status : OrderStatus
+      -lines : List<OrderLine>
+      -total : Money
+      -shippingAddress : Address
+      ==
+      +addLine(p : Product, qty : int) : void
+      +removeLine(sku : String) : void
+      +place() : void
+      +cancel(reason : String) : void
+      +calculateTotal() : Money
+      -assertModifiable() : void
+    }
+
+    class OrderLine {
+      -quantity : int
+      -unitPrice : Money
+      +subtotal() : Money
+    }
+
+    enum OrderStatus {
+      DRAFT
+      PLACED
+      PAID
+      SHIPPED
+      DELIVERED
+      CANCELLED
+      REFUNDED
+    }
+
+    class Cart <<Entity>> {
+      -items : Map<String, Integer>
+      -expiresAt : Instant
+      +toOrder() : Order
+    }
+
+    abstract class Discount {
+      #code : String
+      #validUntil : LocalDate
+      +{abstract} apply(price : Money) : Money
+      +isExpired() : boolean
+    }
+
+    class PercentageDiscount {
+      -percent : int
+      +apply(price : Money) : Money
+    }
+
+    class FixedAmountDiscount {
+      -amount : Money
+      +apply(price : Money) : Money
+    }
+  }
+
+  package payment {
+    class Payment <<Entity>> {
+      -amount : Money
+      -method : PaymentMethod
+      -status : PaymentStatus
+      -externalRef : String
+    }
+
+    enum PaymentMethod {
+      CARD
+      PAYPAL
+      BANK_TRANSFER
+      CRYPTO
+    }
+
+    enum PaymentStatus {
+      PENDING
+      AUTHORIZED
+      CAPTURED
+      FAILED
+      REFUNDED
+    }
+  }
+}
+
+' =========================================================
+' EVENTS
+' =========================================================
+package "com.shop.events" <<Frame>> {
+  interface DomainEvent {
+    +occurredAt() : Instant
+    +aggregateId() : UUID
+  }
+
+  class OrderPlacedEvent {
+    +orderId : UUID
+    +customerId : UUID
+    +total : Money
+  }
+
+  class PaymentCapturedEvent {
+    +paymentId : UUID
+    +orderId : UUID
+  }
+
+  class StockDepletedEvent {
+    +sku : String
+  }
+
+  interface "EventHandler<E extends DomainEvent>" as EventHandler {
+    +handle(event : E) : void
+  }
+
+  class EventBus <<Singleton>> {
+    -{static} instance : EventBus
+    -handlers : Map<Class<?>, List<EventHandler>>
+    +{static} getInstance() : EventBus
+    +publish(e : DomainEvent) : void
+    +subscribe(type : Class<?>, h : EventHandler) : void
+  }
+
+  DomainEvent <|.. OrderPlacedEvent
+  DomainEvent <|.. PaymentCapturedEvent
+  DomainEvent <|.. StockDepletedEvent
+  EventBus "1" o-- "0..*" EventHandler : dispatches to >
+  EventBus ..> DomainEvent : <<publishes>>
+}
+
+' =========================================================
+' APPLICATION SERVICES
+' =========================================================
+package "com.shop.application" {
+
+  interface OrderService {
+    +createFromCart(cartId : UUID) : Order
+    +pay(orderId : UUID, m : PaymentMethod) : Payment
+    +cancel(orderId : UUID) : void
+  }
+
+  class OrderServiceImpl <<Service>> {
+    -orderRepo : OrderRepository
+    -inventoryService : InventoryService
+    -paymentGateway : PaymentGateway
+    -eventBus : EventBus
+    +createFromCart(cartId : UUID) : Order
+    +pay(orderId : UUID, m : PaymentMethod) : Payment
+    +cancel(orderId : UUID) : void
+  }
+
+  class InventoryService <<Service>> {
+    +reserveFor(o : Order) : void
+    +releaseFor(o : Order) : void
+  }
+
+  class PricingEngine <<Service>> {
+    -rules : List<PricingRule>
+    +quote(o : Order, c : Customer) : Money
+  }
+
+  interface PricingRule {
+    +apply(ctx : PricingContext) : void
+  }
+
+  class TierDiscountRule
+  class BulkDiscountRule
+  class SeasonalRule
+
+  class NotificationHandler <<Service>>
+  class ShippingHandler <<Service>>
+
+  PricingRule <|.. TierDiscountRule
+  PricingRule <|.. BulkDiscountRule
+  PricingRule <|.. SeasonalRule
+  PricingEngine *-- "1..*" PricingRule
+}
+
+' =========================================================
+' INFRASTRUCTURE
+' =========================================================
+package "com.shop.infrastructure" {
+
+  package persistence <<Database>> {
+    interface OrderRepository
+    interface CustomerRepository
+    interface ProductRepository
+
+    class JpaOrderRepository
+    class JpaCustomerRepository
+    class CachedProductRepository {
+      -delegate : ProductRepository
+      -cache : Cache<String, Product>
+    }
+  }
+
+  package gateways <<Cloud>> {
+    interface PaymentGateway {
+      +authorize(p : Payment) : GatewayResponse
+      +capture(ref : String) : GatewayResponse
+      +refund(ref : String, amount : Money) : GatewayResponse
+    }
+
+    class StripeAdapter
+    class PayPalAdapter
+    class MockGateway <<Test>>
+
+    class GatewayResponse <<DTO>> {
+      +success : boolean
+      +reference : String
+      +rawPayload : String
+    }
+
+    class PaymentGatewayFactory {
+      +{static} forMethod(m : PaymentMethod) : PaymentGateway
+    }
+  }
+}
+
+' =========================================================
+' API LAYER
+' =========================================================
+package "com.shop.api" {
+  class OrderController <<Controller>> {
+    -orderService : OrderService
+    +POST_createOrder(req : CreateOrderRequest) : ResponseEntity<OrderDto>
+    +GET_order(id : UUID) : ResponseEntity<OrderDto>
+    +DELETE_order(id : UUID) : ResponseEntity<Void>
+  }
+
+  class CreateOrderRequest <<DTO>> {
+    +cartId : UUID
+    +addressId : UUID
+    +couponCode : String [0..1]
+  }
+
+  class OrderDto <<DTO>> {
+    +id : UUID
+    +status : String
+    +total : String
+    +lines : List<OrderLineDto>
+  }
+
+  class OrderLineDto <<DTO>>
+
+  class OrderMapper {
+    +{static} toDto(o : Order) : OrderDto
+  }
+
+  OrderDto *-- "*" OrderLineDto
+}
+
+' =========================================================
+' RELATIONSHIPS
+' =========================================================
+
+' Inheritance
+BaseEntity <|-- Customer
+BaseEntity <|-- Product
+BaseEntity <|-- Category
+BaseEntity <|-- Order
+BaseEntity <|-- Cart
+BaseEntity <|-- Payment
+BaseEntity <|-- Inventory
+Product <|-- PhysicalProduct
+Product <|-- DigitalProduct
+Product <|-- Bundle
+Discount <|-- PercentageDiscount
+Discount <|-- FixedAmountDiscount
+RuntimeException <|-- DomainException
+
+' Interface realization
+OrderService <|.. OrderServiceImpl
+Repository <|-- OrderRepository
+Repository <|-- CustomerRepository
+Repository <|-- ProductRepository
+OrderRepository <|.. JpaOrderRepository
+CustomerRepository <|.. JpaCustomerRepository
+ProductRepository <|.. CachedProductRepository
+PaymentGateway <|.. StripeAdapter
+PaymentGateway <|.. PayPalAdapter
+PaymentGateway <|.. MockGateway
+EventHandler <|.. NotificationHandler
+EventHandler <|.. ShippingHandler
+
+' Composition / aggregation
+Customer "1" *-- "0..*" Address : owns >
+Order "1" *-- "1..*" OrderLine : contains >
+Bundle "1" o-- "2..*" Product : groups >
+PhysicalProduct *-- Dimensions
+Category "0..1" o-- "0..*" Category : children
+Category "*" -- "*" Product : categorizes >
+
+' Associations
+Customer "1" --> "0..*" Order : places >
+Customer --> LoyaltyTier
+Customer "1" -- "0..1" Cart
+Order --> OrderStatus
+Order "1" --> "0..*" Payment : paid by >
+Order "0..*" --> "0..*" Discount : applies >
+OrderLine "*" --> "1" Product : refers to >
+Product "1" -- "1" Inventory
+Payment --> PaymentMethod
+Payment --> PaymentStatus
+Cart ..> Order : <<creates>>
+
+' Qualified association
+Customer [addressId : UUID] --> Address : lookup
+
+' Association class
+(Order, Discount) .. AppliedDiscount
+class AppliedDiscount {
+  -savedAmount : Money
+  -appliedAt : Instant
+}
+
+' Dependencies
+OrderServiceImpl --> OrderRepository
+OrderServiceImpl --> InventoryService
+OrderServiceImpl --> PaymentGateway
+OrderServiceImpl --> EventBus
+OrderServiceImpl ..> PricingEngine : uses
+OrderServiceImpl ..> Transactional : <<annotated>>
+OrderServiceImpl ..> OrderPlacedEvent : <<emits>>
+InventoryService ..> StockDepletedEvent : <<emits>>
+InventoryService --> Inventory
+PricingEngine ..> Customer
+PaymentGatewayFactory ..> PaymentGateway : <<instantiates>>
+StripeAdapter ..> GatewayResponse
+PayPalAdapter ..> GatewayResponse
+CachedProductRepository o--> ProductRepository : delegate
+OrderController --> OrderService
+OrderController ..> CreateOrderRequest
+OrderController ..> OrderMapper
+OrderMapper ..> OrderDto
+OrderMapper ..> Order
+NotificationHandler ..> OrderPlacedEvent
+ShippingHandler ..> PaymentCapturedEvent
+
+' Money everywhere
+Order --> Money
+Product --> Money
+Payment --> Money
+OrderLine --> Money
+
+' Lollipop interface
+PaymentGateway -() Refundable
+
+' Direction hints
+Customer -[hidden]right- Product
+OrderController -[hidden]down- OrderServiceImpl
+
+' Grouping
+together {
+  class OrderLine
+  class AppliedDiscount
+}
+
+' =========================================================
+' NOTES
+' =========================================================
+note top of Order
+  <b>Aggregate root.</b>
+  All modifications to OrderLine
+  must go through Order.
+end note
+
+note right of EventBus::publish
+  Synchronous dispatch.
+  Async variant planned for v3.
+end note
+
+note "Adapters are selected at runtime\nby PaymentGatewayFactory" as N1
+N1 .. StripeAdapter
+N1 .. PayPalAdapter
+
+note as N2
+  <color:red>TODO</color>: replace with
+  Outbox pattern
+end note
+N2 .. OrderPlacedEvent
+
+legend right
+  | Color | Meaning |
+  |<#E8F4FD>| Entity |
+  |<#FFF4E0>| Service |
+  |<#E9F7EF>| Controller |
+endlegend
+
+@enduml
